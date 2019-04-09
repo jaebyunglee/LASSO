@@ -1,0 +1,99 @@
+rm(list=ls())
+library(glmnet)
+library(ncvreg)
+set.seed(1)
+
+## compare several methods and then fit model 
+
+########################### comparison ##############################
+n = 100 ; p = 10 ; nf = 10; q = 5
+x.mat = matrix(rnorm(n*p),n,p); x1.mat = cbind(1,x.mat)
+tb.vec = c(q:1)/q; tb.vec = c(tb.vec,rep(0,p-q)) 
+y.vec = x.mat%*%tb.vec + rnorm(n)
+
+# cv error 
+e.mat = matrix(0,nf,3)
+rid = split(sample(1:n),1:nf)  
+for(i in 1:nf){
+  tx.mat = x.mat[-rid[[i]],] ; ty.vec = y.vec[-rid[[i]]]
+  sx.mat = x.mat[rid[[i]],] ; sy.vec = y.vec[rid[[i]]]
+  tx1.mat= cbind(1,tx.mat); sx1.mat = cbind(1,sx.mat)
+  #linear regression model
+  b.vec = solve(t(tx1.mat)%*%tx1.mat)%*%t(tx1.mat)%*%ty.vec
+  e.mat[i,1] =  colSums((sy.vec - sx1.mat%*%b.vec)^2)
+  #lasso with linear regression model
+  fit = glmnet(tx.mat,ty.vec)
+  lambda = fit$lambda
+  rrid = split(sample(1:length(ty.vec)),1:nf)
+  e.vec = 0
+  for(k in 1:nf){
+    ttx.mat = tx.mat[-rrid[[k]],] ; tty.vec = ty.vec[-rrid[[k]]]
+    ssx.mat = tx.mat[rrid[[k]],] ; ssy.vec = ty.vec[rrid[[k]]]
+    fit2 = glmnet(ttx.mat,tty.vec,lambda = lambda)
+    e.vec = e.vec+colSums((ssy.vec-predict.glmnet(fit2,newx = ssx.mat))^2)
+  }
+  pos = which.min(e.vec) ; b.vec = c(fit$a0[pos],fit$beta[,pos])
+  e.mat[i,2] = colSums((sy.vec - sx1.mat%*%b.vec)^2)
+  #SCAD with linear regreesion model
+  scad.fit = ncvreg(tx.mat,ty.vec,penalty = "SCAD")
+  scad.lambda = scad.fit$lambda
+  ne.vec = 0
+  for(t in 1:nf){
+    ttx.mat = tx.mat[-rrid[[t]],] ; tty.vec = ty.vec[-rrid[[t]]]
+    ssx.mat = tx.mat[rrid[[t]],] ; ssy.vec = ty.vec[rrid[[t]]]
+    scad.fit2 = ncvreg(ttx.mat,tty.vec,penalty="SCAD",lambda = scad.lambda)
+    ne.vec = ne.vec+colSums((ssy.vec-predict(scad.fit2,ssx.mat))^2)
+  }
+  pos2 = which.min(ne.vec)
+  b.vec = scad.fit2$beta[,pos2]
+  e.mat[i,3] = colSums((sy.vec - sx1.mat%*%b.vec)^2)
+}
+e.vec = colMeans(e.mat)
+e.vec
+if(min(e.vec)==e.vec[1]){
+  cat("the linear regression is winner \n")
+} else if(min(e.vec)==e.vec[2]){
+  cat("the lasso with linear regression is winner \n")
+} else {cat("the scad with linear regression is winner \n")}
+
+
+#############################fit final model################################
+id = split(sample(1:length(y.vec)),1:nf)
+if(min(e.vec)==e.vec[1]){
+  #linear regression
+  b.vec = solve(t(tx1.mat)%*%tx1.mat)%*%t(tx1.mat)%*%ty.vec 
+} else if(min(e.vec)==e.vec[2]){
+  #lasso with linear regression
+  fit = glmnet(x.mat,y.vec)
+  lambda = fit$lambda
+  ge.vec = 0
+  for(k in 1:nf){
+    tx.mat = x.mat[-id[[k]],] ; ty.vec = y.vec[-id[[k]]]
+    sx.mat = x.mat[id[[k]],] ; sy.vec = y.vec[id[[k]]]
+    fit2 = glmnet(tx.mat,ty.vec,lambda = lambda)
+    ge.vec = ge.vec+colSums((sy.vec-predict.glmnet(fit2,newx = sx.mat))^2)
+  }
+  pos = which.min(ge.vec) ; b.vec = c(fit$a0[pos],fit$beta[,pos])
+} else { 
+  #scad with linear regression
+  scad.fit = ncvreg(x.mat,y.vec,penalty="SCAD")
+  scad.lambda = scad.fit$lambda
+  ne.vec = 0
+  for(t in 1:nf){
+    tx.mat = x.mat[-id[[t]],] ; ty.vec = y.vec[-id[[t]]]
+    sx.mat = x.mat[id[[t]],] ; sy.vec = y.vec[id[[t]]]
+    scad.fit2 = ncvreg(tx.mat,ty.vec,penalty="SCAD",lambda = scad.lambda)
+    ne.vec = ne.vec+colSums((sy.vec-predict(scad.fit2,sx.mat))^2)
+  }
+  pos2 = which.min(ne.vec)
+  b.vec = scad.fit2$beta[,pos2]
+}
+b.vec
+
+
+
+
+
+
+
+

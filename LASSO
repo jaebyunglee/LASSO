@@ -1,0 +1,52 @@
+##########data###########
+library(glmnet)
+p = 5; q = 2; n = 200
+b.vec = c(1/(1:q),rep(0,p-q)) #true beta
+b.vec
+x.mat = matrix(rnorm(n*p),nrow=n,ncol=p) #design matrix
+ox.mat = cbind(c(rep(1,n)),x.mat)
+dim(x.mat)
+length(b.vec)
+y.vec = drop(x.mat%*%b.vec)+rnorm(200) #response vector = x*b+e
+length(y.vec)
+
+
+lm.fit = summary(lm(y.vec~x.mat)) #OLS beta
+names(lm.fit)
+is.matrix(lm.fit$coef)
+lm.fit$coef[,1]
+######################cv.glmnet ###############
+cv.fit = cv.glmnet(x.mat,y.vec,family="gaussian") 
+names(cv.fit)
+#######cv.glmnet - beta########
+pos.vec = cv.fit$lambda==cv.fit$lambda.min
+hb.vec = rbind(cv.fit$glmnet.fit$a0,cv.fit$glmnet.fit$beta)[,pos.vec]
+
+##############glmnet##############
+glm.fit = glmnet(x.mat,y.vec,family="gaussian")
+names(glm.fit)
+rbind(glm.fit$a0,glm.fit$beta)[,pos.vec]
+
+
+lmax = 61*cv.fit$lambda.min
+lmin = cv.fit$lambda.min
+lambda = seq(lmax,lmin,length.out=61)
+
+glm.fit = glmnet(x.mat,y.vec,family="gaussian",lambda=lambda)
+rbind(glm.fit$a0,glm.fit$beta)[,61]
+
+###################traning, test error#############################
+
+nx.mat = matrix(rnorm(n*p),nrow=n,ncol=p)
+ny.vec = drop(nx.mat%*%b.vec)+rnorm(n)
+onx.mat = cbind(c(rep(1,n)),nx.mat)
+hny.vec = onx.mat%*%hb.vec
+
+test.error = sum((ny.vec-hny.vec)^2)/n
+traninig.error = sum((y.vec-ox.mat%*%hb.vec)^2)/n
+
+############test error check#################
+a=predict.cv.glmnet(cv.fit,nx.mat,s="lambda.min")
+#test error using predict.cv.glmnet
+sum((ny.vec-a)^2)/n 
+

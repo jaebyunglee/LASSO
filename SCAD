@@ -1,0 +1,27 @@
+library(ncvreg) 
+##########data###########
+n = 200 ; p = 30 ; q = 5
+x.mat = matrix(rnorm(n*p),nrow=n,ncol=p)
+b.vec = c(1/(1:q),rep(0,p-q))
+y.vec = drop(x.mat%*%b.vec)+rnorm(n)
+#############ncvreg, cv.ncverg################
+scad.fit = ncvreg(x.mat,y.vec,penalty="SCAD")
+cv.fit = cv.ncvreg(x.mat,y.vec,penalty="SCAD")
+names(cv.fit)
+################cv.ncverg , beta###############
+pos.vec = cv.fit$lambda==cv.fit$lambda.min
+hb.vec = cv.fit$fit$beta[,pos.vec]
+################test, training error##############
+nx.mat = matrix(rnorm(n*p),nrow=n,ncol=p)
+ny.vec = drop(nx.mat%*%b.vec)+rnorm(n)
+onx.mat = cbind(rep(1,n),nx.mat)
+ox.mat = cbind(rep(1,n),x.mat)
+hny.vec = onx.mat%*%hb.vec
+
+
+test.error = sum((ny.vec-hny.vec)^2)/n
+traning.error = sum((y.vec-ox.mat%*%hb.vec)^2)/n
+test.error1 = sum((ny.vec-predict(scad.fit,nx.mat)[,pos.vec])^2)/n
+test.error
+traning.error
+test.error1

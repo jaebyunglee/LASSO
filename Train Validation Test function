@@ -1,0 +1,101 @@
+rm(list=ls())
+library(glmnet); library(ncvreg); library(MASS); library(ncpen); library(robustreg)
+
+
+
+
+set.seed(123)
+n = 500; p = 10; q = 5
+
+#data
+x.mat = matrix(rnorm(n*p),n,p); x1.mat = cbind(1,x.mat)
+tb.vec = c(q:1)/q; tb.vec = c(tb.vec,rep(0,p-q)) 
+y.vec = x.mat%*%tb.vec + rnorm(n)
+#split vector
+n.vec = c(2,1,1)
+#number of repetitions
+r = 10
+#traning-validation-test function
+tvt.function = function(y.vec,x.mat,n.vec,r){
+  b = n*cumsum(n.vec)/sum(n.vec)
+  e.mat = matrix(0,r,5)
+  for(i in 1:r){
+    #data split(using whole model)
+    a = sample(1:n)
+    trid = a[1:b[1]]
+    vdid = a[(b[1]+1):b[2]]
+    tsid = a[(b[2]+1):b[3]]
+    
+    trx.mat = x.mat[trid,]; try.vec = y.vec[trid]
+    vdx.mat = x.mat[vdid,]; vdy.vec = y.vec[vdid]
+    tsx.mat = x.mat[tsid,]; tsy.vec = y.vec[tsid]
+    trvdx.mat = rbind(trx.mat,vdx.mat); trvdy.vec = c(try.vec,vdy.vec)
+    #linear regression
+    beta = solve(t(cbind(1,trvdx.mat))%*%cbind(1,trvdx.mat))%*%t(cbind(1,trvdx.mat))%*%trvdy.vec
+    e.mat[i,1] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+    #huber regression
+    xy.df = data.frame(trvdy.vec,trvdx.mat)
+    h.regression = robustRegH(trvdy.vec~.,data=xy.df)
+    beta = h.regression$coefficients
+    e.mat[i,2] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+    #lasso with linear regression
+    fit = glmnet(trx.mat,try.vec)
+    lam.vec = fit$lambda 
+    e.vec = sqrt(colSums((vdy.vec-predict.glmnet(fit,newx=vdx.mat))^2))
+    pos = which.min(e.vec)
+    fit = glmnet(trvdx.mat,trvdy.vec,lambda=fit$lambda)
+    beta = c(fit$a0[pos],fit$beta[,pos])
+    e.mat[i,3] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+    #### scad with vd error
+    fit = ncvreg(trx.mat,try.vec)
+    lam.vec = fit$lambda
+    e.vec = sqrt(colSums((vdy.vec-predict(fit,vdx.mat))^2))
+    pos = which.min(e.vec)
+    fit = ncvreg(trvdx.mat,trvdy.vec,lambda=lam.vec)
+    beta = fit$beta[,pos]
+    e.mat[i,4] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+    #### scad with gic
+    fit = ncpen(y.vec=trvdy.vec,x.mat=trvdx.mat,family="gaussian",penalty="scad",lambda=lam.vec)
+    beta = gic.ncpen(fit)$opt.beta
+    e.mat[i,5] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+  }
+  test.error = colMeans(e.mat)
+  names(test.error) = c("linear","huber","lasso","scad","gic")
+  
+    return(test.error)
+  
+}
+
+#data split into 3set
+tvt.function(y.vec,x.mat,n.vec,r)
+
+
+
+######################################function#######################################3
+
+my.test.fun = function(y.vec,x.mat,tun=c("cv","vd"),nsim){
+  tun = match.arg(tun)
+  e.mat = matrix(0,nsim,5)
+  ### set partition 
+  
+  
+  if(tun=="cv"){
+    for(sim in 1:nsim){
+      ### linear 
+      e.mat[sim,1] = e.linear(tx.mat,ty.vec,nx.mat,ny.vec)
+
+      ### lasso
+      e.mat[sim,2] = e.lasso(tx.mat,ty.vec,nx.mat,ny.vec)
+    }
+  } else if(tun=="vd"){
+    
+  } 
+    
+  return(e.mat)
+}
+
+
+
+
+
+

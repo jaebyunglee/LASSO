@@ -1,0 +1,75 @@
+rm(list=ls())
+
+#data
+n = 1000 ; p = 20 ; q = 3
+x.mat = matrix(rnorm(n*p),n,p); x1.mat = cbind(1,x.mat)
+tb.vec = c(q:1)/q; tb.vec = c(tb.vec,rep(0,p-q)) 
+y.vec = x.mat%*%tb.vec + rnorm(n)
+
+#my_function
+my.test.fun = function(y.vec,x.mat,tun=c("cv","tvt"),nsim){
+  error.mat = matrix(0,nsim,2)
+  tun = match.arg(tun)
+  b = length(y.vec)*cumsum(c(2,1,1))/sum(c(2,1,1))
+  if(tun=="cv"){
+       for(sim in 1:nsim){
+          rid = split(sample(1:length(y.vec)),1:5)
+          e.mat = matrix(0,5,2)
+          for(i in 1:5){
+              tx.mat = x.mat[-rid[[i]],]; ty.vec = y.vec[-rid[[i]]]
+              sx.mat = x.mat[rid[[i]],]; sy.vec = y.vec[rid[[i]]]
+              tx1.mat = cbind(1,tx.mat); sx1.mat = cbind(1,sx.mat)
+              # linear regression with x.mat
+              b.vec = as.vector(solve(t(tx1.mat)%*%tx1.mat)%*%t(tx1.mat)%*%ty.vec)
+              e.mat[i,1] = sum((sy.vec-sx1.mat%*%b.vec)^2) 
+              # lasso with linear regression
+              fit = glmnet(tx.mat,ty.vec); lambda = fit$lambda
+              rrid = split(sample(1:length(ty.vec)),1:5)
+              e.vec = 0
+               for(k in 1:5){
+                    ttx.mat = tx.mat[-rrid[[k]],]; tty.vec = ty.vec[-rrid[[k]]]
+                    ssx.mat = tx.mat[rrid[[k]],]; ssy.vec = ty.vec[rrid[[k]]]
+                    ffit = glmnet(ttx.mat,tty.vec,lambda=lambda)
+                    e.vec = e.vec+colSums((ssy.vec-predict.glmnet(ffit,newx=ssx.mat))^2)
+              }
+              pos = which.min(e.vec); b.vec = c(fit$a0[pos],fit$beta[,pos])
+              e.mat[i,2] = sum((sy.vec-sx1.mat%*%b.vec)^2)
+          }
+          error.mat[sim,] = colMeans(e.mat)
+            }
+  } else if(tun=="tvt"){  
+      for(sim in 1:nsim){
+         a = sample(length(y.vec))
+         trid = a[1:b[1]]
+         vdid = a[(b[1]+1):b[2]]
+         tsid = a[(b[2]+1):b[3]]
+         tvid = a[1:b[2]]
+         
+         #data split                 
+         trx.mat = x.mat[trid,]; try.vec = y.vec[trid]
+         vdx.mat = x.mat[vdid,]; vdy.vec = y.vec[vdid]
+         tsx.mat = x.mat[tsid,]; tsy.vec = y.vec[tsid]
+         trvdx.mat = x.mat[tvid,]; trvdy.vec = y.vec[tvid]
+                          
+         #linear regression
+         beta = solve(t(cbind(1,trvdx.mat))%*%cbind(1,trvdx.mat))%*%t(cbind(1,trvdx.mat))%*%trvdy.vec 
+         error.mat[sim,1] = sum((tsy.vec-cbind(1,tsx.mat)%*%beta)^2)
+                          
+         #lasso with linear regression
+         fit = glmnet(trx.mat,try.vec,family="gaussian") 
+         lambda = fit$lambda
+         beta = rbind(fit$a0,fit$beta)
+         e.vec = colSums((vdy.vec-cbind(1,vdx.mat)%*%beta)^2)
+         pos = which.min(e.vec)
+         fit2 = glmnet(trvdx.mat,trvdy.vec,family="gaussian",lambda=lambda)
+         beta = c(fit2$a0[pos],fit2$beta[,pos])
+         error.mat[sim,2] = sum((tsy.vec-predict.glmnet(fit2,newx=tsx.mat)[,pos])^2)
+                          }
+  }
+  mean = colMeans(error.mat)
+  names(mean) = c("linear","lasso")
+  return(mean)
+  }
+
+my.test.fun(y.vec,x.mat,tun="cv",nsim=5)
+my.test.fun(y.vec,x.mat,tun="tvt",nsim=5)
